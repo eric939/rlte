@@ -1,9 +1,13 @@
 from copy import deepcopy
 from operator import neg
-from sortedcontainers import SortedDict, SortedList
 import numpy as np
 import pandas as pd
 import warnings
+
+try:
+    from sortedcontainers import SortedDict, SortedList
+except ImportError:  # pragma: no cover - exercised only when dependency is absent
+    from limit_order_book.sorted_fallback import SortedDict, SortedList
 
 class DynamicDict:
     def __init__(self):

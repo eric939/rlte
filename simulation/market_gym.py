@@ -1,3 +1,4 @@
+import copy
 import os, sys 
 current_path = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.dirname(current_path)
@@ -40,16 +41,20 @@ class Market(gym.Env):
             time_delta (int): time difference at which the agent trades                                   
         """
 
+        config = copy.deepcopy(config)
+        config.setdefault('drop_feature', None)
+
         assert 'market_env' in config
         assert 'execution_agent' in config
         assert 'volume' in config
         assert 'seed' in config
         assert 'terminal_time' in config 
         assert 'time_delta' in config         
-        assert 'drop_feature' in config
         assert config['drop_feature'] in [None, 'volume', 'order_info', 'drift']
 
         seed = config['seed']
+        self.config = copy.deepcopy(config)
+        self.seed = seed
         
         assert config['market_env'] in ['noise', 'flow', 'strategic']
         assert config['execution_agent'] in ['market_agent', 'sl_agent', 'linear_sl_agent', 'rl_agent']
@@ -57,36 +62,38 @@ class Market(gym.Env):
         self.agents = {}
         
         # set up initial agent          
+        initial_cfg = copy.deepcopy(initial_agent_config)
         if config['market_env'] == 'noise':
             # those files need to be generated in advance. 0.65 denotes the damping factor 
-            initial_agent_config['initial_shape_file'] = f'{parent_dir}/initial_shape/noise_65.npz'
-            initial_agent_config['initial_shape_file'] = f'{parent_dir}/initial_shape/noise_65.npz'
+            initial_cfg['initial_shape_file'] = f'{parent_dir}/initial_shape/noise_65.npz'
+            initial_cfg['initial_shape_file'] = f'{parent_dir}/initial_shape/noise_65.npz'
         else:
-            initial_agent_config['initial_shape_file'] = f'{parent_dir}/initial_shape/noise_flow_65.npz'
-        initial_agent_config['start_time'] = -config['time_delta']
-        agent = InitialAgent(**initial_agent_config)
+            initial_cfg['initial_shape_file'] = f'{parent_dir}/initial_shape/noise_flow_65.npz'
+        initial_cfg['start_time'] = -config['time_delta']
+        agent = InitialAgent(**initial_cfg)
         self.agents[agent.agent_id] = agent
 
         # set up the noise agent, general settings 
-        noise_agent_config['rng'] = np.random.default_rng(seed)
-        noise_agent_config['unit_volume'] = False
-        noise_agent_config['terminal_time'] = config['terminal_time']
+        noise_cfg = copy.deepcopy(noise_agent_config)
+        noise_cfg['rng'] = np.random.default_rng(seed)
+        noise_cfg['unit_volume'] = False
+        noise_cfg['terminal_time'] = config['terminal_time']
         # always start the noise agent at -time_delta in all three cases 
-        noise_agent_config['start_time'] = -config['time_delta']
+        noise_cfg['start_time'] = -config['time_delta']
 
         # set up noise agent for noise, flow, or strategic case 
         # noise  
         if config['market_env'] == 'noise':
-            noise_agent_config['imbalance_reaction'] = False
-            agent = NoiseAgent(**noise_agent_config)
+            noise_cfg['imbalance_reaction'] = False
+            agent = NoiseAgent(**noise_cfg)
             self.agents[agent.agent_id] = agent
 
         # flow or strategic 
         else: 
-            noise_agent_config['imbalance_reaction'] = True
+            noise_cfg['imbalance_reaction'] = True
             # can adjust imbalance_factor here 
             # noise_agent_config['imbalance_factor'] = 2.0
-            agent = NoiseAgent(**noise_agent_config)            
+            agent = NoiseAgent(**noise_cfg)            
             # TODO: make those intensity adjustments automatically or move them to the config file 
             # scale down other intensities due to presence of tactical traders 
             # we still keep this explicit, to remember that we do this kind of scaling 
@@ -99,7 +106,7 @@ class Market(gym.Env):
             #     # self.agents[agent.agent_id] = agent
             # else: 
             # could do different scalings when strategic trader is present 
-            intensity_scaling = noise_agent_config['intensity_scaling']
+            intensity_scaling = noise_cfg['intensity_scaling']
             agent.limit_intensities = agent.limit_intensities * intensity_scaling            
             agent.market_intensity = agent.market_intensity * intensity_scaling
             agent.cancel_intensities = agent.cancel_intensities * intensity_scaling
@@ -107,16 +114,17 @@ class Market(gym.Env):
 
         # strategic agent 
         if config['market_env'] == 'strategic':       
+            strategic_cfg = copy.deepcopy(strategic_agent_config)
             # testing out additional scaling when strategic agent is present
             # 
-            strategic_agent_config['terminal_time'] = config['terminal_time']
-            strategic_agent_config['start_time'] = -config['time_delta']     
+            strategic_cfg['terminal_time'] = config['terminal_time']
+            strategic_cfg['start_time'] = -config['time_delta']     
             # we use the default config settings. we can modify them as follows:  
             # strategic_agent_config['time_delta'] = 3 
             # strategic_agent_config['market_volume'] = 1
             # strategic_agent_config['limit_volume'] = 2
-            strategic_agent_config['rng'] = np.random.default_rng(seed)
-            agent = StrategicAgent(**strategic_agent_config)
+            strategic_cfg['rng'] = np.random.default_rng(seed)
+            agent = StrategicAgent(**strategic_cfg)
             self.agents[agent.agent_id] = agent 
             # adjust start time for noise agent 
             # this might be redundant (probably already in the config) 
@@ -127,30 +135,34 @@ class Market(gym.Env):
         # execution agent
         if config['execution_agent'] == 'market_agent':
             # sl_agent_config['start_time'] = 0
-            market_agent_config['volume'] = config['volume']
-            agent = MarketAgent(**market_agent_config)
+            market_cfg = copy.deepcopy(market_agent_config)
+            market_cfg['volume'] = config['volume']
+            agent = MarketAgent(**market_cfg)
         elif config['execution_agent'] == 'sl_agent':
             # sl_agent_config['start_time'] = 0
-            sl_agent_config['volume'] = config['volume']
-            sl_agent_config['terminal_time'] = config['terminal_time']
-            agent = SubmitAndLeaveAgent(**sl_agent_config)
+            sl_cfg = copy.deepcopy(sl_agent_config)
+            sl_cfg['volume'] = config['volume']
+            sl_cfg['terminal_time'] = config['terminal_time']
+            agent = SubmitAndLeaveAgent(**sl_cfg)
         elif config['execution_agent'] == 'linear_sl_agent': 
             # linear_sl_agent_config['start_time'] = 0
-            linear_sl_agent_config['volume'] = config['volume']
-            linear_sl_agent_config['terminal_time'] = config['terminal_time']
-            linear_sl_agent_config['time_delta'] = config['time_delta']
-            agent = LinearSubmitLeaveAgent(**linear_sl_agent_config)
+            linear_sl_cfg = copy.deepcopy(linear_sl_agent_config)
+            linear_sl_cfg['volume'] = config['volume']
+            linear_sl_cfg['terminal_time'] = config['terminal_time']
+            linear_sl_cfg['time_delta'] = config['time_delta']
+            agent = LinearSubmitLeaveAgent(**linear_sl_cfg)
         else:
             # rl_agent_config['start_time'] = 0
-            rl_agent_config['terminal_time'] = config['terminal_time']
-            rl_agent_config['time_delta'] = config['time_delta']
-            rl_agent_config['volume'] = config['volume']
-            rl_agent_config['drop_feature'] = config['drop_feature']
+            rl_cfg = copy.deepcopy(rl_agent_config)
+            rl_cfg['terminal_time'] = config['terminal_time']
+            rl_cfg['time_delta'] = config['time_delta']
+            rl_cfg['volume'] = config['volume']
+            rl_cfg['drop_feature'] = config['drop_feature']
             if config['market_env'] == 'noise':
-                rl_agent_config['initial_shape_file'] = f'{parent_dir}/initial_shape/noise_65.npz'
+                rl_cfg['initial_shape_file'] = f'{parent_dir}/initial_shape/noise_65.npz'
             else:
-                rl_agent_config['initial_shape_file'] = f'{parent_dir}/initial_shape/noise_flow_65.npz'
-            agent = RLAgent(**rl_agent_config)
+                rl_cfg['initial_shape_file'] = f'{parent_dir}/initial_shape/noise_flow_65.npz'
+            agent = RLAgent(**rl_cfg)
 
         self.agents[agent.agent_id] = agent
         self.execution_agent_id = agent.agent_id
@@ -159,7 +171,10 @@ class Market(gym.Env):
             self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(agent.observation_space_length,), dtype=np.float32)
             self.action_space = gym.spaces.Box(low=-10, high=10, shape=(agent.action_space_length,), dtype=np.float32)    
             # observation agent interrupts the queue whenever an observation happens 
-            agent = ObservationAgent(**observation_agent_config)
+            observation_cfg = copy.deepcopy(observation_agent_config)
+            observation_cfg['terminal_time'] = config['terminal_time']
+            observation_cfg['time_delta'] = config['time_delta']
+            agent = ObservationAgent(**observation_cfg)
             self.agents[agent.agent_id] = agent
         else:
             # this is just dummy observation space, to make vectorized environments work for benchmark agents 
@@ -180,6 +195,13 @@ class Market(gym.Env):
 
 
     def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        if seed is not None:
+            self.seed = seed
+            if 'noise_agent' in self.agents:
+                self.agents['noise_agent'].reset_random_seet(np.random.default_rng(seed))
+            if 'strategic_agent' in self.agents:
+                self.agents['strategic_agent'].rng = np.random.default_rng(seed)
         self.lob = LimitOrderBook(list_of_agents=list(self.agents.keys()), level=30, only_volumes=False)
         # reset agents 
         for agent_id in self.agents:
