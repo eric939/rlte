@@ -35,11 +35,13 @@ class DecisionRecord:
     reward_step: float
     reward_cumulative: float
     drift_after: float
+    strategic_direction: str | None
     terminated: bool
     intervened: bool
     intervention_time: int | None
     delta: float
     delta_units: str
+    intervention_target: str
     direction: str
     clipped: bool
     clip_reason: str | None
@@ -51,6 +53,10 @@ class DecisionRecord:
     slack_action_after: float | None
     requested_delta: float
     realized_delta: float
+    planned_market_sell_before: float | None
+    planned_market_sell_after: float | None
+    planned_active_sell_before: float | None
+    planned_active_sell_after: float | None
     best_bid_before: float
     best_ask_before: float
     midprice_before: float

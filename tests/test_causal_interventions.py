@@ -1,7 +1,8 @@
+import numpy as np
 import pandas as pd
 
 from causal.counterfactual_runner import run_paired_intervention
-from causal.policy import InactivePolicy
+from causal.policy import FixedActionPolicy, InactivePolicy
 from causal.repro_check import compare_logged_dataframes, run_reproducibility_check
 from causal.sim_wrapper import MarketSimulatorWrapper
 
@@ -19,6 +20,10 @@ BASE_CONFIG = {
 
 def _inactive_policy():
     return InactivePolicy(action_size=7)
+
+
+def _fixed_policy():
+    return FixedActionPolicy(np.array([0.2, 0.1, 0.1, 0.1, 0.1, 0.1, 0.3], dtype=np.float64))
 
 
 def test_same_seed_reproduces_baseline_trajectory():
@@ -47,7 +52,7 @@ def test_intervention_is_logged_on_the_selected_row():
     assert minus_row["direction"] == "minus"
 
 
-def test_beta_true_hat_is_computed():
+def test_beta_estimands_are_computed():
     result = run_paired_intervention(
         base_config=BASE_CONFIG,
         seed=123,
@@ -56,8 +61,29 @@ def test_beta_true_hat_is_computed():
         horizon=1,
         policy=_inactive_policy(),
     )
+    assert "beta_action_hat" in result.summary
+    assert "beta_exec_hat" in result.summary
     assert "beta_true_hat" in result.summary
+    assert pd.notna(result.summary["beta_action_hat"])
     assert pd.notna(result.summary["beta_true_hat"])
+
+
+def test_fixed_action_policy_supports_feasible_plus_and_minus_interventions():
+    result = run_paired_intervention(
+        base_config=BASE_CONFIG,
+        seed=123,
+        intervention_time=0,
+        delta=0.1,
+        horizon=1,
+        policy=_fixed_policy(),
+    )
+    plus_row = result.plus_log.loc[result.plus_log["decision_index"] == 0].iloc[0]
+    minus_row = result.minus_log.loc[result.minus_log["decision_index"] == 0].iloc[0]
+
+    assert not bool(plus_row["clipped"])
+    assert not bool(minus_row["clipped"])
+    assert float(plus_row["selected_action_after"]) > float(plus_row["selected_action_before"])
+    assert float(minus_row["selected_action_after"]) < float(minus_row["selected_action_before"])
 
 
 def test_logging_schema_contains_required_columns():

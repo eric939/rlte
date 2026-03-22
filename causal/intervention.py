@@ -19,6 +19,7 @@ class InterventionSpec:
     action_index: int = 0
     slack_index: int = -1
     units: str = "normalized"
+    target: str = "component"
     clip: bool = True
 
     def applies(self, decision_index: int) -> bool:
@@ -45,6 +46,7 @@ class ActionOverride:
     slack_before: float | None
     slack_after: float | None
     units: str
+    target: str
 
 
 def _normalized_delta(delta: float, units: str, remaining_inventory: float | None) -> float:
@@ -55,6 +57,74 @@ def _normalized_delta(delta: float, units: str, remaining_inventory: float | Non
     if remaining_inventory is None or remaining_inventory <= 0:
         return 0.0
     return float(delta) / float(remaining_inventory)
+
+
+def target_volumes_from_action(action: np.ndarray, remaining_inventory: float) -> np.ndarray:
+    """Mirror RLAgent's action-to-target-volume conversion for exact lot interventions."""
+    inventory = int(round(float(remaining_inventory)))
+    target_volumes = np.zeros(len(action), dtype=np.int64)
+    available_volume = inventory
+    for idx in range(len(action)):
+        volume_on_level = min(int(np.round(float(action[idx]) * inventory)), available_volume)
+        target_volumes[idx] = volume_on_level
+        available_volume -= volume_on_level
+    target_volumes[-1] += available_volume
+    return target_volumes
+
+
+def choose_adaptive_pair(
+    action,
+    delta: float,
+    units: str,
+    remaining_inventory: float | None,
+    inactive_index: int = -1,
+    preferred_action_index: int | None = None,
+) -> tuple[int, int]:
+    """Choose a feasible action/slack pair for symmetric plus/minus interventions.
+
+    The policy uses the current baseline action and remaining inventory to find a
+    pair of components with enough mass for both directions. We prefer moving
+    volume from a less aggressive component into a more aggressive one.
+    """
+    action_array = normalize_simplex(action)
+    n = len(action_array)
+    inactive_idx = inactive_index if inactive_index >= 0 else n + inactive_index
+
+    if units == "lots":
+        if remaining_inventory is None or remaining_inventory <= 0:
+            raise ValueError("adaptive lot-based intervention requires positive remaining inventory")
+        component_mass = target_volumes_from_action(action_array, remaining_inventory).astype(np.float64)
+        threshold = max(1.0, float(delta))
+    else:
+        component_mass = action_array
+        threshold = float(delta)
+
+    if threshold <= 0:
+        raise ValueError("adaptive intervention requires positive delta")
+
+    priorities = -np.arange(n, dtype=np.float64)
+    priorities[inactive_idx] = -float(n)
+
+    best_pair: tuple[float, tuple[int, int]] | None = None
+    candidate_action_indices = range(n) if preferred_action_index is None else [int(preferred_action_index)]
+    for action_index in candidate_action_indices:
+        for slack_index in range(n):
+            if action_index == slack_index:
+                continue
+            if component_mass[action_index] < threshold:
+                continue
+            if component_mass[slack_index] < threshold:
+                continue
+            aggressiveness_gap = priorities[action_index] - priorities[slack_index]
+            inactive_bonus = 0.25 if slack_index == inactive_idx else 0.0
+            tie_break = component_mass[action_index] + component_mass[slack_index]
+            score = aggressiveness_gap + inactive_bonus + 1e-3 * tie_break
+            if best_pair is None or score > best_pair[0]:
+                best_pair = (score, (action_index, slack_index))
+
+    if best_pair is None:
+        raise ValueError("could not find a feasible adaptive intervention pair")
+    return best_pair[1]
 
 
 def apply_intervention(
@@ -83,12 +153,11 @@ def apply_intervention(
             slack_before=None if spec is None else float(action[spec.slack_index]),
             slack_after=None if spec is None else float(action[spec.slack_index]),
             units="normalized" if spec is None else spec.units,
+            target="component" if spec is None else spec.target,
         )
 
     actual = action.copy()
-    delta_normalized = _normalized_delta(spec.delta, spec.units, remaining_inventory)
     sign = 1.0 if spec.direction == "plus" else -1.0
-    requested_delta = sign * delta_normalized
 
     action_index = int(spec.action_index)
     slack_index = int(spec.slack_index)
@@ -102,34 +171,63 @@ def apply_intervention(
     clip_reason = None
     clipped = False
 
-    if requested_delta >= 0:
-        transferable = float(actual[slack_index])
-        realized_delta = min(requested_delta, transferable)
-        if realized_delta < requested_delta:
-            clipped = True
-            clip_reason = "insufficient_slack_mass"
-        actual[action_index] += realized_delta
-        actual[slack_index] -= realized_delta
+    if spec.units == "lots" and remaining_inventory is not None and remaining_inventory > 0:
+        target_volumes = target_volumes_from_action(actual, float(remaining_inventory))
+        requested_delta = sign * float(spec.delta)
+        if requested_delta >= 0:
+            transferable = int(target_volumes[slack_index])
+            realized_delta_lots = min(int(round(requested_delta)), transferable)
+            if realized_delta_lots < requested_delta:
+                clipped = True
+                clip_reason = "insufficient_slack_lots"
+            target_volumes[action_index] += realized_delta_lots
+            target_volumes[slack_index] -= realized_delta_lots
+        else:
+            transferable = int(target_volumes[action_index])
+            realized_delta_lots = max(int(round(requested_delta)), -transferable)
+            if realized_delta_lots > requested_delta:
+                clipped = True
+                clip_reason = "insufficient_selected_lots"
+            target_volumes[action_index] += realized_delta_lots
+            target_volumes[slack_index] -= realized_delta_lots
+
+        actual = normalize_simplex(target_volumes.astype(np.float64) / float(remaining_inventory))
+        realized_delta_units = float(realized_delta_lots)
+        realized_delta = float(realized_delta_lots) / float(remaining_inventory)
     else:
-        transferable = float(actual[action_index])
-        realized_delta = max(requested_delta, -transferable)
-        if realized_delta > requested_delta:
-            clipped = True
-            clip_reason = "insufficient_selected_mass"
-        actual[action_index] += realized_delta
-        actual[slack_index] -= realized_delta
+        delta_normalized = _normalized_delta(spec.delta, spec.units, remaining_inventory)
+        requested_delta = sign * delta_normalized
+
+        if requested_delta >= 0:
+            transferable = float(actual[slack_index])
+            realized_delta = min(requested_delta, transferable)
+            if realized_delta < requested_delta:
+                clipped = True
+                clip_reason = "insufficient_slack_mass"
+            actual[action_index] += realized_delta
+            actual[slack_index] -= realized_delta
+        else:
+            transferable = float(actual[action_index])
+            realized_delta = max(requested_delta, -transferable)
+            if realized_delta > requested_delta:
+                clipped = True
+                clip_reason = "insufficient_selected_mass"
+            actual[action_index] += realized_delta
+            actual[slack_index] -= realized_delta
+
+        actual = normalize_simplex(actual)
+        selected_after = float(actual[action_index])
+        slack_after = float(actual[slack_index])
+
+        if spec.units == "lots" and remaining_inventory is not None:
+            realized_delta_units = realized_delta * float(remaining_inventory)
+        else:
+            realized_delta_units = realized_delta
 
     if not spec.clip and clipped:
         raise ValueError(f"infeasible intervention without clipping: {clip_reason}")
-
-    actual = normalize_simplex(actual)
     selected_after = float(actual[action_index])
     slack_after = float(actual[slack_index])
-
-    if spec.units == "lots" and remaining_inventory is not None:
-        realized_delta_units = realized_delta * float(remaining_inventory)
-    else:
-        realized_delta_units = realized_delta
 
     return ActionOverride(
         proposed_action=action,
@@ -148,4 +246,5 @@ def apply_intervention(
         slack_before=slack_before,
         slack_after=slack_after,
         units=spec.units,
+        target=spec.target,
     )

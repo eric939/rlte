@@ -1,0 +1,3 @@
+strategic_direction,n_runs,n_usable_pairs,usable_pair_rate,n_support_pairs,support_pair_rate,mean_beta_exec_hat,median_beta_exec_hat,beta_exec_pool_hat,beta_exec_pool_boot_ci95_low,beta_exec_pool_boot_ci95_high,mean_local_treatment_difference,treatment_changed_rate,outcome_changed_rate
+buy,96,96,1.0,95,0.9895833333333334,0.05070175438596491,0.0,0.03526448362720403,-0.013547634251657241,0.09042892422926616,-1.9894736842105263,0.9895833333333334,0.375
+sell,104,104,1.0,100,0.9615384615384616,-0.03916666666666667,0.0,-0.03459821428571429,-0.07702037264537265,0.0021869604955823915,-1.98,0.9615384615384616,0.28846153846153844
