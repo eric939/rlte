@@ -229,6 +229,7 @@ def run_paired_intervention(
         "branch_from_state": bool(branch_from_state),
         "horizon": int(horizon),
         "strategic_direction": baseline_row.get("strategic_direction"),
+        "strategic_alpha": baseline_row.get("strategic_alpha"),
         "baseline_signed_executed_volume": float(baseline_row["signed_executed_volume"]),
         "baseline_planned_market_sell": float(baseline_row["planned_market_sell_after"]),
         "X_plus": float(plus_row["signed_executed_volume"]),

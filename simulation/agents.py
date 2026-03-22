@@ -25,7 +25,10 @@ class NoiseAgent():
                  limit_mean, limit_std,
                  volume_min, volume_max,
                  unit_volume,
-                 damping_factor, imbalance_reaction, imbalance_factor,                 
+                 damping_factor, imbalance_reaction, imbalance_factor,
+                 flow_reaction, flow_factor,
+                 drift_reaction, drift_factor,
+                 reaction_lookback,
                  initial_bid, 
                  initial_ask, 
                  start_time,
@@ -60,6 +63,11 @@ class NoiseAgent():
         self.start_imbalance_at_best = True
         self.imbalance_reaction = imbalance_reaction
         self.imbalance_factor = imbalance_factor
+        self.flow_reaction = flow_reaction
+        self.flow_factor = flow_factor
+        self.drift_reaction = drift_reaction
+        self.drift_factor = drift_factor
+        self.reaction_lookback = reaction_lookback
 
         self.np_random = rng 
         self.level = level 
@@ -241,8 +249,33 @@ class NoiseAgent():
                 print(ask_volumes)
                 raise ValueError('imbalance is nan')
             assert -1 <= imbalance <= 1, 'imbalance must be in [-1, 1]'
-            pos = self.imbalance_factor*max(0, imbalance)
-            neg = self.imbalance_factor*max(0, -imbalance)
+            pressure_signal = float(imbalance)
+            if self.flow_reaction:
+                lookback = float(self.reaction_lookback)
+                recent_buys = sum(
+                    x for x, tstamp in zip(lob.data.market_buy, lob.data.time_stamps)
+                    if tstamp >= time - lookback and tstamp <= time
+                )
+                recent_sells = sum(
+                    x for x, tstamp in zip(lob.data.market_sell, lob.data.time_stamps)
+                    if tstamp >= time - lookback and tstamp <= time
+                )
+                flow_total = recent_buys + recent_sells
+                flow_signal = 0.0 if flow_total == 0 else (recent_buys - recent_sells) / flow_total
+                pressure_signal += self.flow_factor * float(flow_signal)
+            if self.drift_reaction and len(lob.data.time_stamps) >= 2:
+                current_mid = (best_bid_price + best_ask_price) / 2
+                historical_indices = [
+                    idx for idx, tstamp in enumerate(lob.data.time_stamps) if tstamp >= time - self.reaction_lookback
+                ]
+                if historical_indices:
+                    idx_old = historical_indices[0]
+                    old_mid = (lob.data.best_bid_prices[idx_old] + lob.data.best_ask_prices[idx_old]) / 2
+                    drift_signal = 0.0 if old_mid == 0 else (current_mid - old_mid) / 10.0
+                    pressure_signal += self.drift_factor * float(drift_signal)
+            pressure_signal = float(np.clip(pressure_signal, -1.5, 1.5))
+            pos = self.imbalance_factor*max(0, pressure_signal)
+            neg = self.imbalance_factor*max(0, -pressure_signal)
             # pos = max(0, imbalance)
             # neg = max(0, -imbalance)
             # possible adjustments of the imbalance: 
@@ -385,6 +418,128 @@ class NoiseAgent():
     def reset(self):
         self.n_events = 0
         pass 
+
+
+class LiquidityProviderAgent():
+    """
+    Simple state-dependent market maker.
+
+    The agent replenishes visible depth on both sides of the book, widens quotes
+    under directional pressure, and skews posted volume away from the pressured side.
+    It is intentionally simple and transparent: the goal is richer market dynamics,
+    not an optimized market-making policy.
+    """
+
+    def __init__(
+        self,
+        start_time,
+        time_delta,
+        terminal_time,
+        max_volume,
+        levels,
+        inventory_skew,
+        widening_sensitivity,
+        priority=1,
+    ) -> None:
+        self.start_time = start_time
+        self.time_delta = time_delta
+        self.terminal_time = terminal_time
+        self.max_volume = int(max_volume)
+        self.levels = int(levels)
+        self.inventory_skew = float(inventory_skew)
+        self.widening_sensitivity = float(widening_sensitivity)
+        self.priority = priority
+        self.agent_id = 'market_maker'
+        self.reset()
+
+    def reset(self):
+        return None
+
+    def _pressure_signal(self, lob):
+        best_bid = lob.get_best_price('bid')
+        best_ask = lob.get_best_price('ask')
+        bid_volumes = lob.data.bid_volumes[-1]
+        ask_volumes = lob.data.ask_volumes[-1]
+        if np.sum(bid_volumes) + np.sum(ask_volumes) == 0:
+            imbalance = 0.0
+        else:
+            imbalance = float((np.sum(bid_volumes) - np.sum(ask_volumes)) / (np.sum(bid_volumes) + np.sum(ask_volumes)))
+
+        current_mid = (best_bid + best_ask) / 2
+        if len(lob.data.best_bid_prices) >= 2:
+            old_mid = (lob.data.best_bid_prices[-2] + lob.data.best_ask_prices[-2]) / 2
+            drift = float((current_mid - old_mid) / 10.0)
+        else:
+            drift = 0.0
+
+        return float(np.clip(imbalance + self.widening_sensitivity * drift, -1.5, 1.5))
+
+    def generate_order(self, lob, time):
+        assert time >= self.start_time
+        best_bid = lob.get_best_price('bid')
+        best_ask = lob.get_best_price('ask')
+        if np.isnan(best_bid) or np.isnan(best_ask):
+            return []
+
+        pressure = self._pressure_signal(lob)
+        widen = int(max(0, round(abs(pressure))))
+        bid_start = best_bid - widen
+        ask_start = best_ask + widen
+
+        ask_share = float(np.clip(0.5 + 0.5 * self.inventory_skew * max(0.0, pressure), 0.2, 0.8))
+        bid_share = float(np.clip(0.5 + 0.5 * self.inventory_skew * max(0.0, -pressure), 0.2, 0.8))
+        total_share = ask_share + bid_share
+        ask_share /= total_share
+        bid_share /= total_share
+
+        target_bid = int(round(self.max_volume * bid_share))
+        target_ask = int(round(self.max_volume * ask_share))
+        if target_bid + target_ask > self.max_volume:
+            target_ask = max(0, self.max_volume - target_bid)
+        else:
+            target_ask += self.max_volume - target_bid - target_ask
+
+        orders = []
+        for order_id in list(lob.order_map_by_agent[self.agent_id]):
+            orders.append(Cancellation(agent_id=self.agent_id, order_id=order_id, time=time))
+
+        bid_remaining = target_bid
+        ask_remaining = target_ask
+        for level in range(self.levels):
+            bid_volume = bid_remaining // max(1, self.levels - level)
+            ask_volume = ask_remaining // max(1, self.levels - level)
+            if bid_volume > 0:
+                orders.append(
+                    LimitOrder(
+                        agent_id=self.agent_id,
+                        side='bid',
+                        price=bid_start - level,
+                        volume=bid_volume,
+                        time=time,
+                    )
+                )
+                bid_remaining -= bid_volume
+            if ask_volume > 0:
+                orders.append(
+                    LimitOrder(
+                        agent_id=self.agent_id,
+                        side='ask',
+                        price=ask_start + level,
+                        volume=ask_volume,
+                        time=time,
+                    )
+                )
+                ask_remaining -= ask_volume
+        return orders
+
+    def new_event(self, time, event):
+        assert event == self.agent_id
+        if time < self.terminal_time:
+            return (time + self.time_delta, self.priority, self.agent_id)
+        return None
+
+    def initial_event(self):
+        return (self.start_time, self.priority, self.agent_id)
 
 class MarketMakingAgent():
     """
@@ -1293,21 +1448,51 @@ class StrategicAgent():
     - just sends limit and market orders at some frequency
     - we do not keep track of the agents position 
     """
-    def __init__(self, start_time, time_delta, market_volume, limit_volume, terminal_time, rng, priority=-1) -> None:
+    def __init__(
+        self,
+        start_time,
+        time_delta,
+        market_volume,
+        limit_volume,
+        terminal_time,
+        rng,
+        priority=-1,
+        alpha_rho=0.92,
+        alpha_sigma=0.45,
+        alpha_init_scale=1.0,
+        alpha_volume_sensitivity=0.6,
+    ) -> None:
         # assert 0 <= offset < frequency, 'offset must be in {0,1, ..., frequency-1}'        
         self.start_time = start_time
         self.time_delta = time_delta
-        self.market_order_volume = market_volume
-        self.limit_order_volume = limit_volume
+        self.base_market_order_volume = int(market_volume)
+        self.base_limit_order_volume = int(limit_volume)
+        self.market_order_volume = int(market_volume)
+        self.limit_order_volume = int(limit_volume)
         self.agent_id = 'strategic_agent'
         self.rng = rng
         self.direction = None 
+        self.alpha = 0.0
+        self.alpha_rho = float(alpha_rho)
+        self.alpha_sigma = float(alpha_sigma)
+        self.alpha_init_scale = float(alpha_init_scale)
+        self.alpha_volume_sensitivity = float(alpha_volume_sensitivity)
         self.priority = priority
         self.terminal_time = terminal_time   
         return None 
+
+    def _update_latent_alpha(self):
+        innovation = float(self.rng.normal())
+        self.alpha = self.alpha_rho * float(self.alpha) + self.alpha_sigma * innovation
+        self.direction = 'buy' if self.alpha >= 0 else 'sell'
+        scale = max(0.25, 1.0 + self.alpha_volume_sensitivity * abs(float(self.alpha)))
+        self.market_order_volume = max(1, int(round(self.base_market_order_volume * scale)))
+        self.limit_order_volume = max(1, int(round(self.base_limit_order_volume * scale)))
+        return None
     
     def generate_order(self, lob, time):        
         if (time - self.start_time) % self.time_delta == 0:
+            self._update_latent_alpha()
             if self.direction == 'sell':                
                 limit_price = lob.get_best_price('bid')+1
                 order_list = []
@@ -1327,7 +1512,11 @@ class StrategicAgent():
             return None 
         
     def reset(self):
-        self.direction = self.rng.choice(['buy', 'sell'])
+        self.alpha = float(self.alpha_init_scale * self.rng.normal())
+        self.direction = 'buy' if self.alpha >= 0 else 'sell'
+        scale = max(0.25, 1.0 + self.alpha_volume_sensitivity * abs(float(self.alpha)))
+        self.market_order_volume = max(1, int(round(self.base_market_order_volume * scale)))
+        self.limit_order_volume = max(1, int(round(self.base_limit_order_volume * scale)))
         return None
     
     def new_event(self, time, event):

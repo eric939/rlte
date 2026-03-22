@@ -75,6 +75,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--terminal-time", type=int, default=150)
     parser.add_argument("--time-delta", type=int, default=15)
     parser.add_argument("--drop-feature", choices=["volume", "order_info", "drift", "none"], default="none")
+    parser.add_argument("--strategic-alpha-rho", type=float, default=None)
+    parser.add_argument("--strategic-alpha-sigma", type=float, default=None)
+    parser.add_argument("--strategic-alpha-init-scale", type=float, default=None)
+    parser.add_argument("--strategic-alpha-volume-sensitivity", type=float, default=None)
 
     parser.add_argument("--seeds", type=str, default=None, help="Comma-separated list of seeds.")
     parser.add_argument("--seed-start", type=int, default=100)
@@ -130,7 +134,7 @@ def parse_args() -> argparse.Namespace:
 
 def build_base_config(args: argparse.Namespace) -> dict:
     drop_feature = None if args.drop_feature == "none" else args.drop_feature
-    return {
+    config = {
         "market_env": args.market_env,
         "execution_agent": "rl_agent",
         "volume": args.volume,
@@ -139,6 +143,16 @@ def build_base_config(args: argparse.Namespace) -> dict:
         "time_delta": args.time_delta,
         "drop_feature": drop_feature,
     }
+    optional_fields = {
+        "alpha_rho": args.strategic_alpha_rho,
+        "alpha_sigma": args.strategic_alpha_sigma,
+        "alpha_init_scale": args.strategic_alpha_init_scale,
+        "alpha_volume_sensitivity": args.strategic_alpha_volume_sensitivity,
+    }
+    for key, value in optional_fields.items():
+        if value is not None:
+            config[key] = value
+    return config
 
 
 def parse_seeds(args: argparse.Namespace) -> list[int]:

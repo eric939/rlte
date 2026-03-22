@@ -47,6 +47,11 @@ noise_agent_config['initial_shape_file'] = None
 noise_agent_config['damping_factor'] = 0.65
 noise_agent_config['imbalance_reaction'] = False
 noise_agent_config['imbalance_factor'] = 2.0
+noise_agent_config['flow_reaction'] = False
+noise_agent_config['flow_factor'] = 1.25
+noise_agent_config['drift_reaction'] = False
+noise_agent_config['drift_factor'] = 1.0
+noise_agent_config['reaction_lookback'] = 15
 noise_agent_config['default_waiting_time'] = 1e-6
 noise_agent_config['intensity_scaling'] = 0.85
 
@@ -99,9 +104,24 @@ strategic_agent_config['start_time'] = -15
 strategic_agent_config['time_delta'] = 3
 strategic_agent_config['market_volume'] = 1
 strategic_agent_config['limit_volume'] = 2
+strategic_agent_config['alpha_rho'] = 0.92
+strategic_agent_config['alpha_sigma'] = 0.45
+strategic_agent_config['alpha_init_scale'] = 1.0
+strategic_agent_config['alpha_volume_sensitivity'] = 0.6
 strategic_agent_config['rng'] = None 
 strategic_agent_config['priority'] = 2
 strategic_agent_config['terminal_time'] = 150
+
+# market maker / liquidity provider
+market_maker_config = {}
+market_maker_config['start_time'] = -15
+market_maker_config['time_delta'] = 3
+market_maker_config['terminal_time'] = 150
+market_maker_config['max_volume'] = 12
+market_maker_config['levels'] = 2
+market_maker_config['inventory_skew'] = 0.35
+market_maker_config['widening_sensitivity'] = 0.75
+market_maker_config['priority'] = 1
 
 # initial 
 initial_agent_config = {}   
@@ -120,4 +140,3 @@ observation_agent_config['agent_id'] = 'observation_agent'
 observation_agent_config['start_time'] = 0
 observation_agent_config['terminal_time'] = 135
 observation_agent_config['time_delta'] = 15
-

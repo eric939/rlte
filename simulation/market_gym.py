@@ -119,6 +119,16 @@ class Market(gym.Env):
             # 
             strategic_cfg['terminal_time'] = config['terminal_time']
             strategic_cfg['start_time'] = -config['time_delta']     
+            for key in [
+                'market_volume',
+                'limit_volume',
+                'alpha_rho',
+                'alpha_sigma',
+                'alpha_init_scale',
+                'alpha_volume_sensitivity',
+            ]:
+                if key in config:
+                    strategic_cfg[key] = config[key]
             # we use the default config settings. we can modify them as follows:  
             # strategic_agent_config['time_delta'] = 3 
             # strategic_agent_config['market_volume'] = 1

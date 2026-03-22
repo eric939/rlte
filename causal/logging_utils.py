@@ -36,6 +36,7 @@ class DecisionRecord:
     reward_cumulative: float
     drift_after: float
     strategic_direction: str | None
+    strategic_alpha: float | None
     terminated: bool
     intervened: bool
     intervention_time: int | None

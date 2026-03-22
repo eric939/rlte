@@ -101,6 +101,7 @@ class MarketSimulatorWrapper:
         }
         strategic_agent = env.agents.get("strategic_agent")
         snapshot["strategic_direction"] = None if strategic_agent is None else getattr(strategic_agent, "direction", None)
+        snapshot["strategic_alpha"] = None if strategic_agent is None else getattr(strategic_agent, "alpha", None)
         snapshot.update(book_features_to_dict(features, "now"))
         return snapshot
 
@@ -247,6 +248,7 @@ class MarketSimulatorWrapper:
             reward_cumulative=float(execution_agent.cummulative_reward),
             drift_after=float(self.current_info["drift"]),
             strategic_direction=pre_snapshot.get("strategic_direction"),
+            strategic_alpha=pre_snapshot.get("strategic_alpha"),
             terminated=bool(self.terminated),
             intervened=intervened,
             intervention_time=intervention_time,
