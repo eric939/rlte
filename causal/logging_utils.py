@@ -71,6 +71,13 @@ class DecisionRecord:
     imbalance_after: float
     bid_depth_after: float
     ask_depth_after: float
+    best_bid_after_execution: float | None = None
+    best_ask_after_execution: float | None = None
+    midprice_after_execution: float | None = None
+    spread_after_execution: float | None = None
+    imbalance_after_execution: float | None = None
+    bid_depth_after_execution: float | None = None
+    ask_depth_after_execution: float | None = None
     future_midprice: float | None = None
     delta_p_horizon: float | None = None
     horizon: int | None = None

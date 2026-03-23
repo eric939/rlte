@@ -127,6 +127,58 @@ def choose_adaptive_pair(
     return best_pair[1]
 
 
+def choose_increasing_pair(
+    action,
+    delta: float,
+    units: str,
+    remaining_inventory: float | None,
+    inactive_index: int = -1,
+    preferred_action_index: int | None = None,
+) -> tuple[int, int]:
+    """Choose a feasible pair for one-sided baseline-to-higher-intensity interventions.
+
+    For curve estimation we increase selling intensity from a common baseline state.
+    This only requires enough slack mass on the donor component; unlike the symmetric
+    plus/minus case, the selected component does not need enough mass to move back.
+    """
+    action_array = normalize_simplex(action)
+    n = len(action_array)
+    inactive_idx = inactive_index if inactive_index >= 0 else n + inactive_index
+
+    if units == "lots":
+        if remaining_inventory is None or remaining_inventory <= 0:
+            raise ValueError("lot-based curve intervention requires positive remaining inventory")
+        component_mass = target_volumes_from_action(action_array, remaining_inventory).astype(np.float64)
+        threshold = max(1.0, float(delta))
+    else:
+        component_mass = action_array
+        threshold = float(delta)
+
+    if threshold <= 0:
+        raise ValueError("curve intervention requires positive delta")
+
+    priorities = -np.arange(n, dtype=np.float64)
+    priorities[inactive_idx] = -float(n)
+
+    best_pair: tuple[float, tuple[int, int]] | None = None
+    candidate_action_indices = range(n) if preferred_action_index is None else [int(preferred_action_index)]
+    for action_index in candidate_action_indices:
+        for slack_index in range(n):
+            if action_index == slack_index:
+                continue
+            if component_mass[slack_index] < threshold:
+                continue
+            inactive_bonus = 0.25 if slack_index == inactive_idx else 0.0
+            tie_break = component_mass[slack_index] - priorities[slack_index]
+            score = inactive_bonus + 1e-3 * tie_break
+            if best_pair is None or score > best_pair[0]:
+                best_pair = (score, (action_index, slack_index))
+
+    if best_pair is None:
+        raise ValueError("could not find a feasible one-sided intervention pair")
+    return best_pair[1]
+
+
 def apply_intervention(
     proposed_action,
     spec: InterventionSpec | None,

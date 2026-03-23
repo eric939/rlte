@@ -1,0 +1,21 @@
+{
+  "input_dir": "outputs/baseline_curve_main",
+  "n_rows_filtered": 398,
+  "beta_column": "beta_exec_immediate_hat",
+  "min_abs_treatment_diff": 1.0,
+  "include_deltas": null,
+  "raw_beta_r2_on_state": 0.035235242670710876,
+  "best_normalization": "sell_pressure_depth",
+  "best_normalization_row": {
+    "candidate": "sell_pressure_depth",
+    "normalized_std": 0.7472251942796551,
+    "normalized_mean": 0.15401013053542037,
+    "normalized_abs_mean": 0.23988627771547555,
+    "normalized_r2_on_state": 0.03304134748181675,
+    "raw_r2_on_state": 0.035235242670710876,
+    "corr_with_bid_depth": -0.06814803208179647,
+    "corr_with_imbalance": -0.05507091492702132,
+    "score_lower_is_better": 0.15626029449063455,
+    "intercept": 1.5015905463911687
+  }
+}

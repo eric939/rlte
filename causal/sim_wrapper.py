@@ -157,6 +157,7 @@ class MarketSimulatorWrapper:
         proposed_action: np.ndarray | None,
         override: ActionOverride | None,
     ) -> DecisionRecord:
+        env = self._require_env()
         execution_agent = self._execution_agent()
         actual_action = None if override is None else override.actual_action
         if override is None:
@@ -224,6 +225,8 @@ class MarketSimulatorWrapper:
             realized_delta = override.realized_delta
             intervention_time = override.intervention_time
 
+        execution_snapshot = getattr(env, "last_execution_snapshot", None) or {}
+
         return DecisionRecord(
             episode_id=str(self.current_episode_id),
             run_label=str(self.current_run_label),
@@ -278,6 +281,13 @@ class MarketSimulatorWrapper:
             best_bid_after=float(post_snapshot["best_bid_now"]),
             best_ask_after=float(post_snapshot["best_ask_now"]),
             midprice_after=float(post_snapshot["midprice_now"]),
+            best_bid_after_execution=float(execution_snapshot["best_bid_after_execution"]) if "best_bid_after_execution" in execution_snapshot else None,
+            best_ask_after_execution=float(execution_snapshot["best_ask_after_execution"]) if "best_ask_after_execution" in execution_snapshot else None,
+            midprice_after_execution=float(execution_snapshot["midprice_after_execution"]) if "midprice_after_execution" in execution_snapshot else None,
+            spread_after_execution=float(execution_snapshot["spread_after_execution"]) if "spread_after_execution" in execution_snapshot else None,
+            imbalance_after_execution=float(execution_snapshot["imbalance_after_execution"]) if "imbalance_after_execution" in execution_snapshot else None,
+            bid_depth_after_execution=float(execution_snapshot["bid_depth_after_execution"]) if "bid_depth_after_execution" in execution_snapshot else None,
+            ask_depth_after_execution=float(execution_snapshot["ask_depth_after_execution"]) if "ask_depth_after_execution" in execution_snapshot else None,
             spread_after=float(post_snapshot["spread_now"]),
             imbalance_after=float(post_snapshot["imbalance_now"]),
             bid_depth_after=float(post_snapshot["bid_depth_now"]),

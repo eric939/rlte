@@ -1,0 +1,31 @@
+{
+  "n_pooled": 398,
+  "alpha_ols": 0.008835272082018923,
+  "beta_ols": 0.024178085567823367,
+  "alpha_ols_ci95_low": -0.008234724952389324,
+  "alpha_ols_ci95_high": 0.026134403008715217,
+  "beta_ols_ci95_low": 0.01647642850635466,
+  "beta_ols_ci95_high": 0.032557228134643644,
+  "alpha_adj": 0.049086144691769876,
+  "beta_adj": 0.02394469372745443,
+  "beta_adj_ci95_low": 0.016402054142307533,
+  "beta_adj_ci95_high": 0.03272454891175445,
+  "gamma_spread": 0.017903247627212557,
+  "gamma_imbalance": -0.09792336872912723,
+  "gamma_inventory": -0.00465604706234313,
+  "stratified": {
+    "buy": {
+      "n": 1,
+      "beta_ols": NaN,
+      "beta_ols_ci95_low": NaN,
+      "beta_ols_ci95_high": NaN
+    },
+    "sell": {
+      "n": 397,
+      "beta_ols": 0.024193508519110833,
+      "beta_ols_ci95_low": 0.016468150653996146,
+      "beta_ols_ci95_high": 0.032632967604851765,
+      "alpha_ols": 0.008917691028052626
+    }
+  }
+}

@@ -217,6 +217,7 @@
   "intervention_time": 0,
   "delta": 1.0,
   "delta_units": "lots",
+  "min_abs_treatment_diff": 1.0,
   "intervention_target": "market",
   "horizon": 3,
   "action_index": 0,
@@ -224,6 +225,5 @@
   "adaptive_intervention": true,
   "branch_from_state": true,
   "device": "cpu",
-  "skipped_runs": [],
-  "min_abs_treatment_diff": 1.0
+  "skipped_runs": []
 }

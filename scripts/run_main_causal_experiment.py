@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive entrypoint for the main causal estimation experiment."""
+"""Interactive entrypoint for the baseline causal estimation experiment."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def _run(cmd: list[str]) -> None:
 
 
 def main() -> None:
-    print("Main causal estimation experiment")
+    print("Baseline causal estimation experiment")
     print("Default setup: strategic regime, heuristic state-dependent sell policy, adaptive market-volume intervention, branching from the exact t0 state.")
     print("Default paper output: horizon profile with pooled execution-effect estimates, latent-direction splits, and a 1-lot realized-treatment support filter.")
     print("")
@@ -72,7 +72,7 @@ def main() -> None:
         main_horizon = _prompt_int("Main horizon", 3)
         run_robust = _prompt_bool("Also run robustness horizon?", True)
         robust_horizon = _prompt_int("Robustness horizon", 5) if run_robust else None
-    output_root = _prompt_text("Output directory", "outputs/causal_final")
+    output_root = _prompt_text("Output directory", "outputs/baseline_experiment")
 
     python_bin = sys.executable
     output_root_path = PROJECT_ROOT / output_root

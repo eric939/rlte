@@ -17,6 +17,7 @@ import itertools
 import time
 import gymnasium as gym 
 import torch
+from causal.feature_extraction import extract_book_features
 
 class Market(gym.Env):
     ''''
@@ -206,6 +207,7 @@ class Market(gym.Env):
         # reset agents 
         for agent_id in self.agents:
             self.agents[agent_id].reset()
+        self.last_execution_snapshot = None
         # initialize event queue 
         self.pq = PriorityQueue()
         # set initial events 
@@ -229,6 +231,7 @@ class Market(gym.Env):
     def transition(self, action=None):
         terminated = False
         transition_reward = 0 
+        self.last_execution_snapshot = None
         if action is not None:
             if self.transform_action:
                 action = np.exp(action) / np.sum(np.exp(action))
@@ -256,6 +259,17 @@ class Market(gym.Env):
             # looks like an error. orders == [] should not evaluate to True 
             if orders is not None or orders == []:
                 msgs = self.lob.process_order_list(orders)
+                if agent_id == self.execution_agent_id:
+                    exec_features = extract_book_features(self.lob, depth_levels=5)
+                    self.last_execution_snapshot = {
+                        "best_bid_after_execution": float(exec_features.best_bid),
+                        "best_ask_after_execution": float(exec_features.best_ask),
+                        "midprice_after_execution": float(exec_features.midprice),
+                        "spread_after_execution": float(exec_features.spread),
+                        "imbalance_after_execution": float(exec_features.imbalance),
+                        "bid_depth_after_execution": float(exec_features.bid_depth),
+                        "ask_depth_after_execution": float(exec_features.ask_depth),
+                    }
                 # update execution agent position 
                 # noise agent and strategic agent do not update their positions
                 # breack happens when execution agent is filled
